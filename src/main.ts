@@ -7,7 +7,7 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap'); 
 
   app.enableCors({
-    origin: 'http://localhost:8080', 
+    origin: '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
@@ -23,9 +23,11 @@ async function bootstrap() {
   }));
   logger.log('Global ValidationPipe habilitado');
 
-  const port = process.env.PORT || 3000;
-  await app.listen(port);
-  console.log(`La aplicación está corriendo en: ${await app.getUrl()}`);
+  const port = process.env.PORT || 5000;
+  app.enableCors();
+  await app.listen(port, '0.0.0.0');
+  const url = `http://localhost:${port}`;
+  console.log(`La aplicación está corriendo en: ${url}`);
   console.log(`Escuchando en el puerto ${port}`);
   console.log(`CORS habilitado para origen: http://localhost:8080`); 
   console.log(`Prefijo global de API establecido en "/api"`);

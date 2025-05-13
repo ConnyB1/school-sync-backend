@@ -14,6 +14,13 @@ export class AnnouncementsService {
     private readonly usersService: UsersService,
     private readonly classesService: ClassesService,
   ) {}
+
+  async findAll(): Promise<Announcement[]> {
+    return this.announcementsRepository.find({
+      relations: ['class', 'author'],
+      order: { createdAt: 'DESC' },
+    });
+  }
   /*
   async create(createAnnouncementDto: CreateAnnouncementDto, authorAuth0Id: string): Promise<Announcement> {
     const author = await this.usersService.findOneByAuth0Id(authorAuth0Id);
