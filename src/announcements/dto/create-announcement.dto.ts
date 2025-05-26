@@ -1,19 +1,21 @@
-import { IsString, IsNotEmpty, IsOptional, IsUUID } from 'class-validator';
+// proyecto/school-sync-backend/src/announcements/dto/create-announcement.dto.ts
+import { IsString, MinLength, MaxLength, IsOptional, IsUUID, IsUrl, IsNotEmpty } from 'class-validator';
 
 export class CreateAnnouncementDto {
-  @IsNotEmpty()
   @IsString()
+  @MinLength(3)
+  @MaxLength(150)
   title: string;
 
-  @IsNotEmpty()
   @IsString()
+  @MinLength(5)
   content: string;
 
-  @IsUUID()
-  @IsNotEmpty()
+  @IsUUID('4', { message: 'El ID de la clase debe ser un UUID válido.'})
+  @IsNotEmpty({ message: 'El ID de la clase es obligatorio para un anuncio.' })
   classId: string;
 
   @IsOptional()
-  @IsString()
+  @IsUrl({}, { message: 'La URL de la imagen debe ser válida.'})
   imageUrl?: string;
 }

@@ -1,7 +1,9 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+// src/users/dto/link-student.dto.ts (Modificado)
+import { IsString, IsNotEmpty, IsUUID } from 'class-validator';
 
 export class LinkStudentDto {
-  @IsNotEmpty()
   @IsString()
-  studentAuth0Id: string; 
+  @IsNotEmpty()
+  @IsUUID('4', { message: 'El ID del alumno debe ser un UUID válido.'}) // Asumiendo que usas UUIDs
+  studentId: string; // Cambiado de studentAuth0Id
 }

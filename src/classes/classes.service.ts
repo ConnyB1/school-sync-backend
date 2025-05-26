@@ -1,15 +1,26 @@
 // proyecto/school-sync-backend/src/classes/classes.service.ts
-import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger, InternalServerErrorException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+  InternalServerErrorException,
+  ForbiddenException,
+  forwardRef,
+  Inject,
+  HttpStatus,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Class } from './class.entity';
-import { User } from '../users/user.entity';
-import { UsersService } from '../users/users.service'; // Para buscar/crear usuarios
-import { SendGridService } from '../sendgrid/sendgrid.service'; // Para enviar correos
+import { User, UserRole } from '../users/user.entity';
+import { UsersService } from '../users/users.service';
+import { SendGridService } from '../sendgrid/sendgrid.service';
 import * as XLSX from 'xlsx';
 import { CreateClassDto } from './dto/create-class.dto';
 import { JoinClassDto } from './dto/join-class.dto';
-import { ImportClassesDto, ExcelClassRowDto } from './dto/import-classes.dto'; // Crearemos estos DTOs
+import { ExcelClassRowDto } from './dto/import-classes.dto';
+import { ClassEnrollment } from '../class-enrollments/class-enrollment.entity';
 
 @Injectable()
 export class ClassesService {
@@ -18,242 +29,267 @@ export class ClassesService {
   constructor(
     @InjectRepository(Class)
     private classesRepository: Repository<Class>,
-    @InjectRepository(User) // Necesario si interactuamos directamente con User aquí
-    private usersRepository: Repository<User>,
+    @Inject(forwardRef(() => UsersService))
     private usersService: UsersService,
     private sendgridService: SendGridService,
+    @InjectRepository(ClassEnrollment)
+    private classEnrollmentRepository: Repository<ClassEnrollment>,
   ) {}
 
-  private generateAccessCode(length: number = 6): string {
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  private generateClassCode(length: number = 6): string {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let result = '';
     for (let i = 0; i < length; i++) {
-      result += characters.charAt(Math.floor(Math.random() * characters.length));
+      result += characters.charAt(
+        Math.floor(Math.random() * characters.length),
+      );
     }
     return result;
   }
 
-  async create(createClassDto: CreateClassDto, teacherAuth0Id: string): Promise<Class> {
-    const teacher = await this.usersService.findOneByAuth0Id(teacherAuth0Id);
-    if (!teacher) {
-      throw new NotFoundException(`Maestro con Auth0 ID ${teacherAuth0Id} no encontrado.`);
-    }
-    // Verificar que el usuario tenga rol de maestro
-    if (!teacher.roles || !teacher.roles.includes('Profesor')) {
-        throw new ForbiddenException('Solo los maestros pueden crear clases.');
+  async create(
+    createClassDto: CreateClassDto,
+    teacherId: string,
+  ): Promise<Class> {
+    this.logger.log(`Intentando crear clase con DTO: ${JSON.stringify(createClassDto)} por profesor ID: ${teacherId}`);
+
+    const teacher = await this.usersService.findOneById(teacherId);
+
+    if (
+      !teacher.roles?.includes(UserRole.Profesor) &&
+      !teacher.roles?.includes(UserRole.Admin)
+    ) {
+      throw new ForbiddenException(
+        'Solo los profesores o administradores pueden crear clases.',
+      );
     }
 
-    let accessCode = this.generateAccessCode();
-    let existingClassByCode = await this.classesRepository.findOne({ where: { accessCode } });
-    while (existingClassByCode) { // Asegurar unicidad del código
-      accessCode = this.generateAccessCode();
-      existingClassByCode = await this.classesRepository.findOne({ where: { accessCode } });
-    }
+    let classCode: string;
+    let existingClassByCode: Class | null;
+    let attempts = 0;
+    const maxAttempts = 10;
 
-    const newClass = this.classesRepository.create({
-      ...createClassDto,
-      teacher,
-      accessCode,
-      students: [],
-    });
-
-    try {
-      return await this.classesRepository.save(newClass);
-    } catch (error) {
-      if (error.code === '23505') { // Error de unicidad (ej. si el nombre de clase debe ser único por maestro)
-        throw new ConflictException('Ya existe una clase con un nombre similar o código de acceso.');
+    do {
+      classCode = this.generateClassCode();
+      existingClassByCode = await this.classesRepository.findOne({
+        where: { classCode },
+      });
+      attempts++;
+      if (attempts > maxAttempts) {
+        this.logger.error(
+          'No se pudo generar un código de clase único después de varios intentos.',
+        );
+        throw new InternalServerErrorException(
+          'No se pudo generar un código de clase único.',
+        );
       }
-      this.logger.error('Error creando clase:', error);
-      throw new InternalServerErrorException('No se pudo crear la clase.');
+    } while (existingClassByCode);
+    
+    const newClassPartial: Partial<Class> = {
+      name: createClassDto.name,
+      description: createClassDto.description,
+      teacherId: teacher.id,
+      teacher: teacher as User,
+      classCode: classCode,
+    };
+
+    const newClass = this.classesRepository.create(newClassPartial);
+    
+    try {
+      const savedClass = await this.classesRepository.save(newClass);
+      this.logger.log(`Clase creada con ID: ${savedClass.id}, Código: ${savedClass.classCode}`);
+      return savedClass;
+    } catch (error) {
+      this.logger.error(
+        `Error al guardar la nueva clase: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException('Error al crear la clase.');
     }
   }
 
-  async joinClass(joinClassDto: JoinClassDto, studentAuth0Id: string): Promise<Class> {
-    const student = await this.usersService.findOneByAuth0Id(studentAuth0Id);
-    if (!student) {
-      throw new NotFoundException(`Alumno con Auth0 ID ${studentAuth0Id} no encontrado.`);
-    }
-     // Verificar que el usuario tenga rol de alumno
-    if (!student.roles || !student.roles.includes('alumno')) {
-        throw new ForbiddenException('Solo los alumnos pueden unirse a clases.');
+  async joinClass(
+    joinClassDto: JoinClassDto,
+    studentId: string,
+  ): Promise<Class> {
+    const student = await this.usersService.findOneById(studentId);
+    if (
+      !student.roles?.includes(UserRole.Alumno) &&
+      !student.roles?.includes(UserRole.Admin)
+    ) {
+      throw new ForbiddenException(
+        'Solo los alumnos o administradores pueden unirse a clases de esta manera.',
+      );
     }
 
-
+    // APLICAR .trim() AQUÍ
     const classToJoin = await this.classesRepository.findOne({
-      where: { accessCode: joinClassDto.accessCode },
-      relations: ['students', 'teacher'],
+      where: { classCode: joinClassDto.classCode.trim() }, // <--- CAMBIO AQUÍ
+      relations: ['studentEnrollments', 'teacher'],
     });
 
     if (!classToJoin) {
-      throw new NotFoundException(`Clase con código de acceso "${joinClassDto.accessCode}" no encontrada.`);
+      throw new NotFoundException(
+        `Clase con código "${joinClassDto.classCode.trim()}" no encontrada.`, // <--- CAMBIO AQUÍ para mensaje
+      );
     }
 
-    // Verificar si el alumno ya está en la clase
-    const isAlreadyEnrolled = classToJoin.students.some(s => s.id === student.id);
+    const isAlreadyEnrolled = classToJoin.studentEnrollments.some(
+      (enrollment) => enrollment.userId === student.id,
+    );
+
     if (isAlreadyEnrolled) {
-      this.logger.log(`El alumno ${student.email} ya está inscrito en la clase ${classToJoin.name}`);
-      return classToJoin; // O podrías lanzar un BadRequestException
+      this.logger.log(
+        `El alumno ${student.id} ya está inscrito en la clase ${classToJoin.id}.`,
+      );
+      return classToJoin;
     }
-
-    if (classToJoin.teacherId === student.id) {
-        throw new BadRequestException('Un maestro no puede unirse a su propia clase como alumno.');
-    }
-
-    classToJoin.students.push(student);
-    await this.classesRepository.save(classToJoin);
-    this.logger.log(`Alumno ${student.email} unido a la clase ${classToJoin.name}`);
-    return classToJoin;
+    const newEnrollment = this.classEnrollmentRepository.create({
+      classId: classToJoin.id,
+      userId: student.id,
+    });
+    await this.classEnrollmentRepository.save(newEnrollment);
+    this.logger.log(
+      `Alumno ${student.id} inscrito exitosamente en la clase ${classToJoin.id}.`,
+    );
+    return this.findById(classToJoin.id, student.id);
   }
 
-  async findAllForUser(userAuth0Id: string): Promise<Class[]> {
-    const user = await this.usersService.findOneByAuth0Id(userAuth0Id);
-    if (!user) {
-      throw new NotFoundException(`Usuario con Auth0 ID ${userAuth0Id} no encontrado.`);
-    }
+  async findAllForUser(userId: string): Promise<Class[]> {
+    const user = await this.usersService.findOneById(userId);
 
-    if (user.roles?.includes('Profesor') || user.roles?.includes('maestro')) {
-      // Encuentra clases donde el usuario es el maestro
-      return this.classesRepository.find({
-        where: { teacher: { id: user.id } }, // Asumiendo que `teacher` en Class es la entidad User completa o teacherId es el id del User
-        relations: ['teacher', 'students'], // Carga también los alumnos de cada clase
+    let classes: Class[] = [];
+
+    if (user.roles?.includes(UserRole.Profesor) || user.roles?.includes(UserRole.Admin)) {
+      const taughtClasses = await this.classesRepository.find({
+        where: { teacherId: user.id },
+        relations: ['teacher', 'studentEnrollments', 'studentEnrollments.user'], // Incluir usuarios en enrollments
       });
-    } else if (user.roles?.includes('alumno')) {
-      // Encuentra clases donde el usuario es un estudiante
-      // Esto requiere que la entidad User tenga una relación `classes` que traiga las Class entities.
-      // Y que Class entity cargue sus relaciones students (con { relations: ['students'] })
-      // Para obtener las clases de un alumno:
-      const userWithClasses = await this.usersRepository.findOne({
-        where: { id: user.id },
-        relations: ['classes', 'classes.teacher', 'classes.students'], // Carga las clases y sus maestros/alumnos
+      classes = classes.concat(taughtClasses);
+    }
+
+    if (user.roles?.includes(UserRole.Alumno) || user.roles?.includes(UserRole.Admin)) {
+      const enrollments = await this.classEnrollmentRepository.find({
+        where: { userId: user.id },
+        relations: ['class', 'class.teacher', 'class.studentEnrollments', 'class.studentEnrollments.user'], // Incluir usuarios en enrollments
       });
-      return userWithClasses?.classes || [];
+      // Filtrar para evitar duplicados si un usuario es profesor y alumno de la misma clase
+      const enrolledClasses = enrollments.map(enrollment => enrollment.class)
+                                         .filter(enrolledClass => !classes.some(c => c.id === enrolledClass.id));
+      classes = classes.concat(enrolledClasses);
     }
-    // Padres, admins u otros roles podrían tener otra lógica
-    return [];
+
+    // Ordenar para una visualización consistente
+    return classes.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async findById(id: string, userAuth0Id: string): Promise<Class> {
-    const cls = await this.classesRepository.findOne({ where: {id}, relations: ['teacher', 'students']});
-    if (!cls) {
-        throw new NotFoundException(`Clase con ID ${id} no encontrada.`);
-    }
-    // Verificar si el usuario tiene acceso (es maestro o alumno de la clase)
-    const user = await this.usersService.findOneByAuth0Id(userAuth0Id);
-    if (!user) throw new NotFoundException('Usuario no encontrado.');
+  async findById(classId: string, userId: string): Promise<Class> {
+    this.logger.log(`Buscando clase ID: ${classId} para usuario ID: ${userId}`);
 
-    const isTeacher = cls.teacher.id === user.id;
-    const isStudent = cls.students.some(s => s.id === user.id);
+    const classEntity = await this.classesRepository.findOne({
+      where: { id: classId },
+      relations: ['teacher', 'studentEnrollments', 'studentEnrollments.user'], // Cargar matrículas y los usuarios matriculados
+    });
 
-    if (!isTeacher && !isStudent && !user.roles?.includes('admin')) { // Admin puede ver todo
-        throw new ForbiddenException('No tienes acceso a esta clase.');
+    if (!classEntity) {
+      throw new NotFoundException(`Clase con ID ${classId} no encontrada.`);
     }
-    return cls;
+
+    // Verificar si el usuario es el profesor o está matriculado
+    const isTeacher = classEntity.teacherId === userId;
+    const isStudent = classEntity.studentEnrollments.some(enrollment => enrollment.userId === userId);
+    const isAdmin = (await this.usersService.findOneById(userId)).roles?.includes(UserRole.Admin);
+
+    if (!isTeacher && !isStudent && !isAdmin) {
+      throw new ForbiddenException('No tienes permiso para acceder a esta clase.');
+    }
+
+    return classEntity;
   }
 
+  async findClassMembers(classId: string): Promise<{ teachers: User[]; students: User[] }> {
+    this.logger.log(`Obteniendo miembros para la clase ID: ${classId}`);
+    const classEntity = await this.classesRepository.findOne({
+      where: { id: classId },
+      relations: ['teacher', 'studentEnrollments', 'studentEnrollments.user'], // Asegura que la relación 'user' se carga
+    });
 
-  async importClassesFromExcel(fileBuffer: Buffer, currentUserAuth0Id: string): Promise<{ created: number, updated: number, errors: any[] }> {
-    this.logger.log(`Iniciando importación de clases para el usuario ${currentUserAuth0Id}`);
+    if (!classEntity) {
+      throw new NotFoundException(`Clase con ID ${classId} no encontrada.`);
+    }
+
+    const teachers: User[] = classEntity.teacher ? [classEntity.teacher] : [];
+    const students: User[] = classEntity.studentEnrollments
+                                         .filter(enrollment => enrollment.user) // Filtrar si user es null/undefined
+                                         .map(enrollment => enrollment.user);
+    
+    return { teachers, students };
+  }
+
+  async importClassesFromExcel(fileBuffer: Buffer, uploaderId: string): Promise<any> {
+    const uploader = await this.usersService.findOneById(uploaderId);
+
+    if (!uploader.roles?.includes(UserRole.Admin) && !uploader.roles?.includes(UserRole.Profesor)) {
+      throw new ForbiddenException('Solo los administradores o profesores pueden importar clases.');
+    }
+
     const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json<ExcelClassRowDto>(worksheet);
+    const data: ExcelClassRowDto[] = XLSX.utils.sheet_to_json(worksheet);
 
-    let createdCount = 0;
-    let updatedCount = 0;
-    const errors: any[] = [];
-
-    const importingUser = await this.usersService.findOneByAuth0Id(currentUserAuth0Id);
-    if (!importingUser || !importingUser.roles?.includes('Profesor')) { // O 'admin'
-      throw new ForbiddenException('Solo maestros o administradores pueden importar clases.');
+    if (!data || data.length === 0) {
+      throw new BadRequestException('El archivo Excel está vacío o no tiene el formato esperado.');
     }
 
-    for (const row of jsonData) {
-      try {
-        if (!row.Clase || !row.Codigo || !row.Profesor) {
-          errors.push({ row, error: 'Datos incompletos: Clase, Código y Maestro son requeridos.' });
-          continue;
-        }
+    const newClasses: Class[] = [];
+    for (const row of data) {
+      const className = row.Clase;
+      const classCode = row.Codigo; // Asume que el código viene en el Excel
 
-        // 1. Maestro: Buscar o crear
-        let teacher = await this.usersService.findOneByEmail(row.Profesor.trim());
-        if (!teacher) {
-          // Si el maestro no existe, ¿lo creamos? ¿O fallamos?
-          // Por ahora, asumimos que el maestro debe existir o la fila da error si el importador no es ESE maestro
-          // Si el importador es el maestro especificado en la fila:
-          if (importingUser.email.toLowerCase() !== row.Profesor.trim().toLowerCase()) {
-             errors.push({ row, error: `El maestro ${row.Profesor} no existe o no coincide con el usuario importador.` });
-             continue;
-          }
-          teacher = importingUser; // El importador es el maestro
-        } else {
-            // Verificar que el maestro encontrado tenga el rol 'maestro'
-            if(!teacher.roles?.includes('Profesor')){
-                // Si no es maestro, ¿se le asigna el rol? o ¿error?
-                // Por ahora, asumimos que debe serlo.
-                errors.push({row, error: `El usuario ${teacher.email} no tiene el rol de maestro.`})
-                continue;
-            }
-        }
-
-
-        // 2. Clase: Buscar o crear
-        let classEntity = await this.classesRepository.findOne({ where: { accessCode: row.Codigo.toString() } , relations: ['teacher', 'students']});
-        if (classEntity) { // Actualizar
-          if (classEntity.teacher.id !== teacher.id) {
-            errors.push({ row, error: `El código de clase ${row.Codigo} ya existe y pertenece a otro maestro.` });
-            continue;
-          }
-          classEntity.name = row.Clase;
-          // classEntity.description = row.Description; // Si tienes description en el Excel
-          updatedCount++;
-        } else { // Crear
-          classEntity = this.classesRepository.create({
-            name: row.Clase,
-            accessCode: row.Codigo.toString(),
-            teacher: teacher,
-            students: [],
-          });
-          createdCount++;
-        }
-
-        // 3. Alumnos
-        const studentEmailsString = row.Alumnos?.toString() || '';
-        const studentEmails = studentEmailsString.split(',').map(email => email.trim()).filter(email => email);
-        const existingStudentsInClass = new Set(classEntity.students.map(s => s.email));
-
-
-        if (studentEmails.length > 0) {
-          for (const email of studentEmails) {
-            if (existingStudentsInClass.has(email.toLowerCase())) continue; // Ya está en la clase
-
-            let student = await this.usersService.findOneByEmail(email.toLowerCase());
-            if (!student) {
-              // Alumno no existe, ¿lo creamos? ¿o solo enviamos invitación?
-              // Por ahora, crearemos un usuario placeholder o esperamos que Auth0 lo maneje
-              // Si el usuario se registra vía Auth0 con este email, ya estará listo.
-              // O podemos crear el usuario en Auth0 y luego en nuestra BD.
-              // Por simplicidad, asumiremos que el usuario debe existir o se le invita.
-              this.logger.log(`Alumno con email ${email} no encontrado. Se enviará invitación.`);
-              // Podrías crear un usuario "pendiente" o solo confiar en la invitación.
-            } else {
-                if(!student.roles?.includes('alumno')){
-                    errors.push({row, error: `El usuario ${student.email} existe pero no es un alumno.`})
-                    continue;
-                }
-                classEntity.students.push(student);
-            }
-            // Enviar invitación por correo
-            await this.sendgridService.sendClassInvitationEmail(email, classEntity.name, classEntity.accessCode, teacher.Nombre || teacher.email);
-          }
-        }
-        await this.classesRepository.save(classEntity);
-
-      } catch (error: any) {
-        this.logger.error(`Error procesando fila de Excel para clase ${row.Clase}: ${error.message}`, error.stack);
-        errors.push({ row: row.Clase, error: error.message });
+      if (!className || !classCode) {
+        this.logger.warn(`Fila omitida por datos incompletos: ${JSON.stringify(row)}`);
+        continue;
       }
+
+      // Buscar si la clase ya existe por nombre o código
+      let existingClass = await this.classesRepository.findOne({ where: [{ name: className }, { classCode: classCode }] });
+
+      if (existingClass) {
+        this.logger.warn(`Clase "${className}" o código "${classCode}" ya existe. Omitiendo creación.`);
+        continue; // O podrías actualizarla
+      }
+
+      const newClassPartial: Partial<Class> = {
+        name: className,
+        description: row.Description, // FIXED: Corregido el nombre de la propiedad
+        classCode: classCode,
+        teacherId: uploader.id, // El que sube el archivo es el profesor de estas clases
+        teacher: uploader as User,
+      };
+
+      const newClass = this.classesRepository.create(newClassPartial);
+      newClasses.push(newClass);
     }
-    this.logger.log(`Importación finalizada. Creadas: ${createdCount}, Actualizadas: ${updatedCount}, Errores: ${errors.length}`);
-    return { created: createdCount, updated: updatedCount, errors };
+
+    if (newClasses.length === 0) {
+      return { message: 'No se crearon nuevas clases (ya existían o los datos eran incompletos).' };
+    }
+
+    try {
+      await this.classesRepository.save(newClasses);
+      return { message: `Se importaron ${newClasses.length} clases exitosamente.` };
+    } catch (error) {
+      this.logger.error(`Error al guardar clases importadas: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Error al importar clases.');
+    }
+  }
+
+  // FIXED: Nuevo método para verificar si un usuario está matriculado en una clase
+  async isUserEnrolledInClass(classId: string, userId: string): Promise<boolean> {
+    const enrollment = await this.classEnrollmentRepository.findOne({
+      where: { classId, userId },
+    });
+    return !!enrollment;
   }
 }

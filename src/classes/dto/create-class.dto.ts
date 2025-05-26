@@ -1,17 +1,13 @@
-// proyecto/school-sync-backend/src/classes/dto/create-class.dto.ts
-import { IsNotEmpty, IsString, MaxLength, IsOptional } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsOptional } from 'class-validator';
 
 export class CreateClassDto {
-  @IsNotEmpty()
   @IsString()
+  @MinLength(3)
   @MaxLength(100)
   name: string;
 
-  @IsOptional()
   @IsString()
-  @MaxLength(255)
+  @IsOptional()
+  @MaxLength(500)
   description?: string;
-
-  // accessCode se genera automáticamente
-  // teacherId se obtiene del usuario autenticado
 }

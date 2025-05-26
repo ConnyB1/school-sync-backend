@@ -1,7 +1,7 @@
 // proyecto/school-sync-backend/src/sendgrid/sendgrid.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as sgMail from '@sendgrid/mail';
+import sgMail from '@sendgrid/mail'; // Cambio en la sintaxis de importación
 
 @Injectable()
 export class SendGridService {
@@ -9,25 +9,28 @@ export class SendGridService {
   private verifiedSender: string;
 
   constructor(private configService: ConfigService) {
-    const apiKey = this.configService.get<string>('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');
-    this.verifiedSender = this.configService.get<string>('SENDGRID_VERIFIED_SENDER') ?? 'schoolsync.real@gmail.com'; // Ej: 'no-reply@tuschoolsync.com'
+    // Correcto: Leer la variable de entorno llamada SENDGRID_API_KEY
+    const apiKey = this.configService.get<string>('SENDGRID_API_KEY');
+    this.verifiedSender = this.configService.get<string>('SENDGRID_VERIFIED_SENDER') ?? 'schoolsync.real@gmail.com'; // Ya lo tenías bien.
 
     if (!apiKey) {
-      this.logger.warn('SENDGRID_API_KEY no está configurada. El servicio de correo no funcionará.');
+      this.logger.warn('SENDGRID_API_KEY no está configurada en las variables de entorno. El servicio de correo no funcionará.');
     } else {
       sgMail.setApiKey(apiKey);
       this.logger.log('Servicio SendGrid configurado.');
     }
     if (!this.verifiedSender) {
-        this.logger.warn('SENDGRID_VERIFIED_SENDER no está configurado. Se usará un placeholder.');
+        this.logger.warn('SENDGRID_VERIFIED_SENDER no está configurado. Se usará un placeholder o podría fallar el envío.');
+        // Considera un default más seguro o lanzar error si es crítico
         this.verifiedSender = 'schoolsync.real@gmail.com';
     }
   }
 
   async sendEmail(to: string, subject: string, text: string, html: string): Promise<void> {
-    if (!sgMail.setApiKey) {
-         this.logger.error('API Key de SendGrid no configurada. No se puede enviar correo.');
-         return;
+    const apiKey = this.configService.get<string>('SENDGRID_API_KEY'); // Get it again or store a flag in the constructor
+    if (!apiKey) {
+        this.logger.error('API Key de SendGrid no configurada en las variables de entorno. No se puede enviar correo.');
+        return; 
     }
     const msg = {
       to,

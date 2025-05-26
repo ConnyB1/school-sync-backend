@@ -1,29 +1,25 @@
 // proyecto/school-sync-backend/src/classes/classes.module.ts
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ClassesService } from './classes.service';
 import { ClassesController } from './classes.controller';
 import { Class } from './class.entity';
-import { User } from '../users/user.entity'; // Importar User ya que ClassesService lo inyecta
-import { UsersModule } from '../users/users.module'; // Importar UsersModule para poder inyectar UsersService
-
-// SendGridModule ya debería ser global (configurado en AppModule) o importado en AppModule
-// por lo que normalmente no necesitas importarlo aquí explícitamente.
+import { User } from '../users/user.entity';
+import { UsersModule } from '../users/users.module';
+import { ClassEnrollment } from '../class-enrollments/class-enrollment.entity';
+import { SendGridModule } from '../sendgrid/sendgrid.module';
+import { AuthModule } from '../auth/auth.module';
+import { Assignment } from '../assignments/assignment.entity';
 
 @Module({
   imports: [
-    // Registra las entidades Class y User para que sus repositorios estén disponibles
-    // dentro de este módulo (específicamente para ClassesService).
-    TypeOrmModule.forFeature([Class, User]),
-
-    // Importa UsersModule para que ClassesService pueda inyectar y usar UsersService.
-    UsersModule,
+    TypeOrmModule.forFeature([Class, User, ClassEnrollment, Assignment]),
+    forwardRef(() => UsersModule),
+    SendGridModule,
+    AuthModule,
   ],
-  // Declara el controlador que pertenece a este módulo.
   controllers: [ClassesController],
-  // Declara el servicio que pertenece a este módulo y que será instanciado por NestJS.
   providers: [ClassesService],
-  // Opcional: Exporta el servicio si planeas inyectar ClassesService en otros módulos.
   exports: [ClassesService],
 })
 export class ClassesModule {}

@@ -1,54 +1,58 @@
+// proyecto/school-sync-backend/src/classes/class.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  ManyToOne,
-  ManyToMany,
-  JoinTable,
   CreateDateColumn,
   UpdateDateColumn,
-  Index,
-  RelationId,
-  OneToMany, // <-- Agrega esta importación
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+  Unique,
 } from 'typeorm';
 import { User } from '../users/user.entity';
-import { Announcement } from '../announcements/announcement.entity'; // <-- Importa Announcement
+import { ClassEnrollment } from '../class-enrollments/class-enrollment.entity';
+import { Message } from '../chat/entities/message.entity';
+import { Announcement } from '../announcements/announcement.entity';
+import { Assignment } from '../assignments/assignment.entity';
 
 @Entity('classes')
+@Unique(['classCode'])
 export class Class {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ length: 100 })
+  @Column({ type: 'varchar', length: 150, nullable: false })
   name: string;
 
-  @Column({ length: 255, nullable: true })
+  @Column({ type: 'text', nullable: true })
   description?: string;
 
-  @Column({ unique: true, length: 10 })
-  @Index()
-  accessCode: string;
+  @Column({ name: 'class_code', unique: true, type: 'varchar', length: 20 })
+  classCode: string;
 
-  @ManyToOne(() => User, (user) => user.teachingClasses, { eager: true })
-  teacher: User;
-
-  @RelationId((cls: Class) => cls.teacher)
+  @Column({ name: 'teacher_id', type: 'uuid' })
   teacherId: string;
 
-  @ManyToMany(() => User, (user) => user.classes)
-  @JoinTable({
-    name: 'class_students_user',
-    joinColumn: { name: 'class_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' },
-  })
-  students: User[];
+  @ManyToOne(() => User, (user) => user.taughtClasses)
+  @JoinColumn({ name: 'teacher_id' })
+  teacher: User;
 
-  @OneToMany(() => Announcement, (announcement) => announcement.class)
+  @OneToMany(() => ClassEnrollment, (enrollment) => enrollment.class)
+  studentEnrollments: ClassEnrollment[];
+
+  @OneToMany(() => Message, (message) => message.classInstance, { cascade: ['remove'] })
+  messages: Message[];
+
+  @OneToMany(() => Announcement, (announcement) => announcement.class, { cascade: ['remove'] })
   announcements: Announcement[];
 
-  @CreateDateColumn()
+  @OneToMany(() => Assignment, (assignment) => assignment.class, { cascade: true })
+  assignments: Assignment[];
+
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }
