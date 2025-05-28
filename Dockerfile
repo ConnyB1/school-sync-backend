@@ -5,7 +5,7 @@ WORKDIR /app
 # Copia los archivos package.json y package-lock.json para instalar dependencias primero
 COPY package*.json ./
 # Instala todas las dependencias, incluyendo las de desarrollo
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 # Copia todo el código fuente al contenedor
 COPY . .
@@ -18,7 +18,7 @@ RUN echo "DEBUG: Ejecutando tsc --noEmit para verificar errores..." && npx tsc -
 # Compila usando el build de NestJS
 RUN echo "DEBUG: Ejecutando compilación principal (npm run build)..." && npm run build
 
-# Muestra el contenido de /app/dist después de la compilación
+# Muestra el contenido de /app/D después de la compilación
 RUN echo "DEBUG: Contenido de /app/dist después de build:" && ls -la /app/dist
 # Ahora verifica si main.js existe
 RUN test -f /app/dist/main.js || (echo "Error: main.js not found in dist directory after compilation!" && exit 1)
@@ -35,7 +35,8 @@ COPY --from=builder /app/dist/migrations ./dist/migrations
 COPY --from=builder /app/tsconfig.json ./
 
 # Instala solo las dependencias de producción (esto es correcto para la etapa final)
-RUN npm install --omit=dev
+# AÑADE --legacy-peer-deps AQUÍ TAMBIÉN
+RUN npm install --omit=dev --legacy-peer-deps
 
 # *** INICIO DE LA SECCIÓN DE DEPURACIÓN EN PRODUCTION STAGE (para verificar la causa del error) ***
 RUN echo "DEBUG: Contenido de /app en la etapa final:" && ls -la /app/

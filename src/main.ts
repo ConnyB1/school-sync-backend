@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import AppDataSource from './data-source';
+import { AppDataSource } from './data-source';
 
 class CustomIoAdapter extends IoAdapter {
   createIOServer(port: number, options?: any): any {

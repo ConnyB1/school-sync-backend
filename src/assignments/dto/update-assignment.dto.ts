@@ -4,5 +4,5 @@ import { PartialType } from '@nestjs/mapped-types';
 import { CreateAssignmentDto } from './create-assignment.dto';
 
 export class UpdateAssignmentDto extends PartialType(CreateAssignmentDto) {
-  classId?: never;
+  classId?: never; // No se permite actualizar el classId de una tarea existente
 }

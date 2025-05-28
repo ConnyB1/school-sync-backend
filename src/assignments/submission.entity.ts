@@ -1,52 +1,43 @@
 // proyecto/school-sync-backend/src/assignments/submission.entity.ts
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  ManyToOne,
-  JoinColumn,
-  Unique,
-} from 'typeorm';
-import { Assignment } from './assignment.entity';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { User } from '../users/user.entity';
+import { Assignment } from './assignment.entity';
 
 @Entity('submissions')
-@Unique(['assignmentId', 'studentId']) // Un estudiante solo puede tener una entrega por tarea
 export class Submission {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'submission_file_url', type: 'text', nullable: true })
-  submissionFileUrl?: string; // URL al archivo entregado
-
-  @Column({ name: 'submission_message', type: 'text', nullable: true })
-  submissionMessage?: string; // Mensaje opcional del alumno
-
-  @Column({ name: 'grade', type: 'decimal', precision: 5, scale: 2, nullable: true })
-  grade?: number; // Calificación de la tarea
-
-  @Column({ name: 'feedback', type: 'text', nullable: true })
-  feedback?: string; // Comentarios del profesor
-
-  @Column({ name: 'submitted_at', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
-  submittedAt: Date; // Fecha de la entrega
-
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
-  updatedAt: Date; // Fecha de la última actualización
-
-  @ManyToOne(() => Assignment, (assignment) => assignment.submissions, { onDelete: 'CASCADE', nullable: false })
-  @JoinColumn({ name: 'assignment_id' })
+  @ManyToOne(() => Assignment, assignment => assignment.submissions, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'assignment_id' }) // Cambiado a snake_case
   assignment: Assignment;
 
-  @Column({ name: 'assignment_id', type: 'uuid' })
-  assignmentId: string;
+  @Column({ name: 'assignment_id' }) // Mapea explícitamente la propiedad a la columna snake_case
+  assignmentId: string; // El nombre de la propiedad puede seguir siendo camelCase
 
-  @ManyToOne(() => User, (user) => user.submissions, { onDelete: 'CASCADE', nullable: false })
-  @JoinColumn({ name: 'student_id' })
+  @ManyToOne(() => User, user => user.submissions)
+  @JoinColumn({ name: 'student_id' }) // Cambiado a snake_case
   student: User;
 
-  @Column({ name: 'student_id', type: 'uuid' })
-  studentId: string;
+  @Column({ name: 'student_id' }) // Mapea explícitamente la propiedad a la columna snake_case
+  studentId: string; // El nombre de la propiedad puede seguir siendo camelCase
+
+  // Propiedades añadidas/corregidas
+  @Column({ type: 'varchar', name: 'file_path', nullable: true }) // Asegúrate de que el nombre de columna también coincida aquí si fue afectado por la migración
+  filePath?: string | null;
+
+  @Column({ type: 'timestamptz', name: 'submission_date' }) // Asegúrate de que el nombre de columna también coincida
+  submissionDate: Date;
+
+  @Column({ type: 'int', nullable: true }) // 'grade' probablemente no necesita un 'name' si la columna se llama 'grade'
+  grade?: number | null;
+
+  @Column({ type: 'text', nullable: true }) // 'feedback' probablemente no necesita un 'name'
+  feedback?: string | null;
+
+  @CreateDateColumn({ type: 'timestamptz', name: 'created_at', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at', default: () => 'CURRENT_TIMESTAMP' })
+  updatedAt: Date;
 }

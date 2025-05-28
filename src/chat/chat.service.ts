@@ -1,19 +1,19 @@
 // proyecto/school-sync-backend/src/chat/chat.service.ts
 import { Injectable, Logger, NotFoundException, ForbiddenException, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindManyOptions } from 'typeorm'; // Brackets no se usa aquí directamente
+import { Repository, FindManyOptions } from 'typeorm';
 import { Message, RoomType } from './entities/message.entity';
-import { User } from '../users/user.entity';
+import { User } from '../users/user.entity'; // Asegúrate que User esté importado
 import { CreateMessageDto } from './dto/create-message.dto';
-import { Class } from '../classes/class.entity';
+import { Class } from '../classes/class.entity'; // Asegúrate que Class esté importado
 import { ClassEnrollment } from '../class-enrollments/class-enrollment.entity';
 
 export interface ChatRoomView {
   id: string;
   name: string;
   type: RoomType;
-  originalId?: string;
-  targetUserId?: string;
+  originalId?: string; // Por ejemplo, classId para RoomType.CLASS
+  targetUserId?: string; // Para RoomType.DIRECT
   lastMessage?: Pick<Message, 'content' | 'timestamp' | 'senderId'> & { senderName?: string };
   unreadCount?: number;
 }
@@ -36,7 +36,6 @@ export class ChatService {
   async createMessage(createMessageDto: CreateMessageDto, sender: Omit<User, 'password'>): Promise<Message> {
     this.logger.log(`Creando mensaje en sala ${createMessageDto.roomId} de usuario ${sender.email}`);
 
-    // Validaciones (usando 'sender' en lugar de 'user')
     if (createMessageDto.roomType === RoomType.CLASS) {
       if (!createMessageDto.classId) {
         this.logger.warn(`Intento de crear mensaje de clase sin classId para room ${createMessageDto.roomId}`);
@@ -48,8 +47,8 @@ export class ChatService {
       }
 
       const isEnrolledAsStudent = await this.classEnrollmentRepository.findOneBy({
-          classId: createMessageDto.classId, // Corregido para buscar por classId directamente
-          userId: sender.id
+        classId: createMessageDto.classId,
+        userId: sender.id
       });
 
       if (!isEnrolledAsStudent && classExists.teacherId !== sender.id) {
@@ -57,16 +56,16 @@ export class ChatService {
         throw new ForbiddenException('No tienes permiso para enviar mensajes a esta clase.');
       }
 
-      // Opcional: Validar o corregir roomId para mensajes de clase
       if (createMessageDto.roomId !== `class-${createMessageDto.classId}`) {
-        this.logger.warn(`El roomId '${createMessageDto.roomId}' no coincide con el formato esperado 'class-${createMessageDto.classId}'. Considerar corrección o validación estricta.`);
-        // createMessageDto.roomId = `class-${createMessageDto.classId}`; // Podrías corregirlo si es necesario
+        this.logger.warn(`El roomId '${createMessageDto.roomId}' no coincide con el formato esperado 'class-${createMessageDto.classId}'. RoomId se mantendrá como enviado.`);
+        // Podrías considerar normalizarlo aquí si fuera necesario:
+        // createMessageDto.roomId = `class-${createMessageDto.classId}`;
       }
 
     } else if (createMessageDto.roomType === RoomType.DIRECT) {
-      const participants = createMessageDto.roomId.replace(/^dm-/, '').split('-'); // Asegura quitar 'dm-' solo al inicio
+      const participants = createMessageDto.roomId.replace(/^dm-/, '').split('-');
       if (participants.length !== 2 || !participants.includes(sender.id)) {
-        this.logger.warn(`Usuario ${sender.email} intentando enviar a DM ${createMessageDto.roomId} con formato inválido o sin ser participante listado en el ID.`);
+        this.logger.warn(`Usuario ${sender.email} intentando enviar a DM ${createMessageDto.roomId} con formato inválido o sin ser participante.`);
         throw new ForbiddenException('Formato de sala directa inválido o no eres participante.');
       }
       const otherParticipantId = participants.find(id => id !== sender.id);
@@ -75,33 +74,30 @@ export class ChatService {
         if (!otherUserExists) {
           throw new NotFoundException(`El otro usuario en el chat directo (ID: ${otherParticipantId}) no fue encontrado.`);
         }
-        // Asignar recipientId si la entidad Message tiene este campo y es un DM
-        if ('recipientId' in createMessageDto && !createMessageDto.recipientId) {
-            createMessageDto.recipientId = otherParticipantId;
-        }
+        // if ('recipientId' in createMessageDto && !createMessageDto.recipientId) {
+        //   (createMessageDto as any).recipientId = otherParticipantId; // Asignar si es necesario para la entidad Message
+        // }
       } else {
         this.logger.error(`No se pudo identificar al otro participante en el DM room: ${createMessageDto.roomId} para sender: ${sender.id}`);
         throw new InternalServerErrorException('Error al procesar el chat directo.');
       }
     }
 
-    // ÚNICA declaración y creación de newMessageEntity
     const newMessageData: Partial<Message> = {
       content: createMessageDto.content,
       roomId: createMessageDto.roomId,
       roomType: createMessageDto.roomType,
       classId: createMessageDto.roomType === RoomType.CLASS ? createMessageDto.classId : undefined,
       senderId: sender.id,
-      sender: sender as User, // Cast Omit<User, 'password'> a User para la relación
+      sender: sender as User,
       timestamp: new Date(),
     };
     
-    // Si es un mensaje directo y tienes recipientId en tu entidad Message y quieres asignarlo:
     if (createMessageDto.roomType === RoomType.DIRECT) {
         const participants = createMessageDto.roomId.replace(/^dm-/, '').split('-');
         const otherParticipantId = participants.find(id => id !== sender.id);
         if (otherParticipantId) {
-            newMessageData.recipientId = otherParticipantId;
+            newMessageData.recipientId = otherParticipantId; // Asumiendo que tu entidad Message tiene `recipientId`
         }
     }
 
@@ -119,12 +115,13 @@ export class ChatService {
 
   async getMessagesForRoom(
     roomId: string,
-    userId: string, // ID del usuario que solicita, para validación de acceso
+    userId: string,
     page = 1,
     limit = 50,
   ): Promise<Message[]> {
     this.logger.log(`Usuario ${userId} obteniendo mensajes para la sala: ${roomId}, página ${page}, límite ${limit}`);
 
+    // Lógica de validación de acceso (ya existente y parece correcta)
     if (roomId.startsWith('dm-')) {
       const participants = roomId.replace(/^dm-/, '').split('-');
       if (!participants.includes(userId)) {
@@ -134,7 +131,10 @@ export class ChatService {
     } else if (roomId.startsWith('class-')) {
       const classId = roomId.replace(/^class-/, '');
       const classExists = await this.classRepository.findOneBy({id: classId });
-      if (!classExists) throw new NotFoundException(`Clase para sala ${roomId} no encontrada.`);
+      if (!classExists) {
+          this.logger.warn(`Intento de obtener mensajes para sala de clase inexistente: ${classId} por ${userId}`);
+          throw new NotFoundException(`Clase para sala ${roomId} no encontrada.`);
+      }
 
       const isEnrolled = await this.classEnrollmentRepository.findOneBy({ classId, userId });
       if (!isEnrolled && classExists.teacherId !== userId) {
@@ -142,56 +142,85 @@ export class ChatService {
         throw new ForbiddenException('No tienes acceso a esta sala de clase.');
       }
     } else {
-        this.logger.warn(`Formato de roomId desconocido: ${roomId} para usuario ${userId}`);
-        throw new ForbiddenException('Formato de sala desconocido.');
+        this.logger.warn(`Formato de roomId desconocido al obtener mensajes: ${roomId} para usuario ${userId}`);
+        throw new BadRequestException('Formato de sala desconocido.');
     }
 
     const findOptions: FindManyOptions<Message> = {
       where: { roomId },
       order: { timestamp: 'DESC' },
-      relations: ['sender'], // Asegura que el sender se cargue con sus campos (sin contraseña si Message.sender usa User y User.password es select:false)
+      relations: ['sender'],
       take: limit,
       skip: (page - 1) * limit,
     };
 
     const messages = await this.messageRepository.find(findOptions);
-    return messages.reverse();
+    return messages.reverse(); // Los mensajes se devuelven en orden cronológico ascendente
   }
 
-  async getUserChatRooms(user: Omit<User, 'password'>): Promise<ChatRoomView[]> {
-    this.logger.log(`Obteniendo salas de chat para usuario ${user.email}`);
+  async getUserChatRooms(user: Omit<User, 'password'> & { roles?: string[] }): Promise<ChatRoomView[]> {
+    this.logger.log(`Obteniendo salas de chat para usuario ${user.email} con roles: ${user.roles?.join(', ')}`);
     
-    const enrollments = await this.classEnrollmentRepository.find({
-      where: { userId: user.id },
-      relations: ['class'], // Carga la entidad Class relacionada
-    });
+    let classRoomsFromEnrollments: ChatRoomView[] = [];
+    try {
+      const enrollments = await this.classEnrollmentRepository.find({
+        where: { userId: user.id },
+        relations: ['class'], 
+      });
 
-    const classRooms: ChatRoomView[] = enrollments
-      .filter(enrollment => enrollment.class) // Filtrar por si alguna clase fuera null
-      .map(enrollment => ({
-        id: `class-${enrollment.classId}`,
-        name: enrollment.class.name, // Acceder a class.name
-        type: RoomType.CLASS,
-        originalId: enrollment.classId,
-    }));
-
-    // Para mensajes directos, la consulta original con LIKE puede ser ineficiente.
-    // Es mejor si guardas recipientId en la entidad Message.
-    // Si Message tiene senderId y recipientId para DMs:
-    const directMessagesFromUser = await this.messageRepository.find({
-        where: [
-            { senderId: user.id, roomType: RoomType.DIRECT },
-            { recipientId: user.id, roomType: RoomType.DIRECT }
-        ],
-        select: ['roomId', 'senderId', 'recipientId'], // Seleccionar solo lo necesario
-        order: { timestamp: 'DESC' } // Para obtener el último mensaje si es necesario después
-    });
+      classRoomsFromEnrollments = enrollments
+        .filter(enrollment => enrollment.class) 
+        .map(enrollment => ({
+          id: `class-${enrollment.class.id}`, // Usar class.id para consistencia
+          name: enrollment.class.name,
+          type: RoomType.CLASS,
+          originalId: enrollment.class.id,
+        }));
+      this.logger.debug(`Salas de clase por inscripción para ${user.email}: ${classRoomsFromEnrollments.length}`);
+    } catch (error) {
+      this.logger.error(`Error obteniendo salas por inscripción para ${user.email}: ${error.message}`, error.stack);
+    }
     
-    const directRoomIds = new Set<string>();
-    directMessagesFromUser.forEach(msg => msg.roomId && directRoomIds.add(msg.roomId));
+    let taughtClassRooms: ChatRoomView[] = [];
+    if (user.roles && user.roles.includes('Profesor')) { // Asegúrate que 'Profesor' sea el nombre exacto del rol
+      try {
+        const taughtClasses = await this.classRepository.find({
+          where: { teacherId: user.id }, 
+        });
 
-    const directRooms = await Promise.all(
-      Array.from(directRoomIds).map(async (roomId) => {
+        taughtClassRooms = taughtClasses
+          .map(classEntity => ({
+            id: `class-${classEntity.id}`, // Generar ID de sala consistentemente
+            name: classEntity.name,
+            type: RoomType.CLASS,
+            originalId: classEntity.id,
+          }));
+        this.logger.debug(`Salas de clase enseñadas por ${user.email}: ${taughtClassRooms.length}`);
+      } catch (error) {
+        this.logger.error(`Error obteniendo salas enseñadas por ${user.email}: ${error.message}`, error.stack);
+      }
+    }
+
+    const allClassRooms = [...classRoomsFromEnrollments, ...taughtClassRooms];
+    const uniqueClassRooms = Array.from(new Map(allClassRooms.map(room => [room.id, room])).values());
+    this.logger.debug(`Total de salas de clase únicas para ${user.email}: ${uniqueClassRooms.length}`);
+
+    let directRooms: ChatRoomView[] = [];
+    try {
+      // Lógica mejorada para obtener salas de DM únicas y nombres de los otros participantes
+      const directMessages = await this.messageRepository
+        .createQueryBuilder("message")
+        .where("message.roomType = :roomType", { roomType: RoomType.DIRECT })
+        .andWhere("(message.senderId = :userId OR message.recipientId = :userId)", { userId: user.id })
+        .select(["message.roomId", "message.senderId", "message.recipientId"])
+        .distinctOn(["message.roomId"]) // Obtener solo una entrada por roomId para identificar las salas
+        // .orderBy("message.roomId") // No es necesario ordenar aquí si solo queremos los IDs de sala
+        .getRawMany(); // Usar getRawMany para campos seleccionados
+
+      const directRoomDetailsPromises = directMessages.map(async (msgFields) => {
+        const roomId = msgFields.message_roomId;
+        if (!roomId) return null;
+
         const participants = roomId.replace(/^dm-/, '').split('-');
         const otherUserId = participants.find(id => id !== user.id);
         
@@ -199,7 +228,7 @@ export class ChatService {
         if (otherUserId) {
           const otherUser = await this.userRepository.findOne({ 
             where: { id: otherUserId }, 
-            select: ['firstName', 'lastName', 'email'] // Seleccionar solo lo necesario, sin contraseña
+            select: ['firstName', 'lastName', 'email']
           });
           if (otherUser) {
             otherUserName = `${otherUser.firstName || ''} ${otherUser.lastName || ''}`.trim() || otherUser.email;
@@ -212,41 +241,72 @@ export class ChatService {
           type: RoomType.DIRECT,
           targetUserId: otherUserId || 'unknown',
         };
-      })
-    );
-
-    return [...classRooms, ...directRooms];
+      });
+      
+      directRooms = (await Promise.all(directRoomDetailsPromises)).filter(Boolean) as ChatRoomView[];
+      this.logger.debug(`Salas de chat directo para ${user.email}: ${directRooms.length}`);
+    } catch (error) {
+      this.logger.error(`Error obteniendo salas de chat directo para ${user.email}: ${error.message}`, error.stack);
+    }
+    
+    const finalRooms = [...uniqueClassRooms, ...directRooms];
+    this.logger.log(`Total de salas (${finalRooms.length}) devueltas para ${user.email}`);
+    return finalRooms;
   }
 
-  // El método getRoomMessages original parece bien, pero el parámetro 'user' es tipo 'User'
-  // Si lo llamas desde un sitio donde tienes Omit<User, 'password'>, necesitarás castear o ajustar.
-  // Por ahora lo dejo como está, asumiendo que el contexto de llamada maneja el tipo 'User'.
-  async getRoomMessages(roomId: string, user: User): Promise<any[]> { // user aquí es User completo
-    this.logger.log(`Obteniendo mensajes para sala ${roomId} (usuario: ${user.email})`);
-
-    // Lógica de verificación de acceso (ya existente)
+  async canUserJoinRoom(user: Omit<User, 'password'> & { roles?: string[] }, roomId: string): Promise<boolean> {
+    this.logger.debug(`Verificando permiso para unirse: Usuario ${user.email}, Sala ${roomId}`);
     if (roomId.startsWith('class-')) {
       const classId = roomId.replace(/^class-/, '');
-      const classEntity = await this.classRepository.findOneBy({ id: classId }); // Cache or ensure loaded
-      if (!classEntity) throw new NotFoundException(`Clase ${classId} no encontrada`);
-      const enrollment = await this.classEnrollmentRepository.findOne({
-        where: { userId: user.id, classId: classId }, // classId directo aquí
-      });
-      if (!enrollment && classEntity.teacherId !== user.id ) { // Asume que classEntity.teacherId existe
-        throw new ForbiddenException(`No tienes acceso a esta clase`);
+      const classEntity = await this.classRepository.findOneBy({ id: classId });
+      if (!classEntity) {
+        this.logger.warn(`Intento de unirse a sala de clase inexistente: ${classId} por ${user.email}`);
+        return false;
       }
+      
+      if (classEntity.teacherId === user.id) {
+        this.logger.debug(`Permiso concedido (join): ${user.email} es profesor de la clase ${classId}`);
+        return true;
+      }
+      
+      const enrollment = await this.classEnrollmentRepository.findOneBy({ userId: user.id, classId: classId });
+      if (enrollment) {
+        this.logger.debug(`Permiso concedido (join): ${user.email} está inscrito en la clase ${classId}`);
+        return true;
+      }
+      
+      this.logger.warn(`Permiso denegado (join): ${user.email} no es profesor ni está inscrito en la clase ${classId}`);
+      return false;
+
     } else if (roomId.startsWith('dm-')) {
       const participants = roomId.replace(/^dm-/, '').split('-');
-      if (!participants.includes(user.id)) {
-        throw new ForbiddenException(`No tienes acceso a esta conversación`);
+      if (participants.includes(user.id)) {
+        this.logger.debug(`Permiso concedido (join): ${user.email} es participante del DM ${roomId}`);
+        return true;
       }
-    } else {
-        throw new BadRequestException("Formato de roomId desconocido.");
+      this.logger.warn(`Permiso denegado (join): ${user.email} no es participante del DM ${roomId}`);
+      return false;
+    }
+    
+    this.logger.warn(`Formato de roomId desconocido en canUserJoinRoom: ${roomId}`);
+    return false;
+  }
+
+  // Este método getRoomMessages es el que parece ser referenciado internamente o era una versión anterior.
+  // El método getMessagesForRoom es el que se expone en el controlador.
+  // Mantengo este por si hay alguna dependencia interna, pero la lógica de permisos es similar.
+  async getRoomMessages(roomId: string, user: User): Promise<any[]> {
+    this.logger.log(`(Legacy getRoomMessages) Obteniendo mensajes para sala ${roomId} (usuario: ${user.email})`);
+
+    const canAccess = await this.canUserJoinRoom(user, roomId); // Reutilizar la lógica de canUserJoinRoom
+    if (!canAccess) {
+         this.logger.warn(`(Legacy getRoomMessages) Usuario ${user.email} intentó acceder a sala ${roomId} sin permiso.`);
+         throw new ForbiddenException(`No tienes acceso a esta sala de chat: ${roomId}`);
     }
 
     const messages = await this.messageRepository.find({
       where: { roomId },
-      relations: ['sender'], // Para acceder a sender.firstName, sender.lastName
+      relations: ['sender'], 
       order: { timestamp: 'ASC' },
     });
 
@@ -255,7 +315,7 @@ export class ChatService {
       content: message.content,
       timestamp: message.timestamp,
       roomId: message.roomId,
-      senderId: message.sender?.id, // Añadir ? por si sender no se carga
+      senderId: message.sender?.id, 
       senderName: message.sender ? `${message.sender.firstName || ''} ${message.sender.lastName || ''}`.trim() || message.sender.email : 'Desconocido',
     }));
   }

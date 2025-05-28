@@ -1,22 +1,22 @@
 // proyecto/school-sync-backend/src/announcements/announcements.module.ts
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AnnouncementsController } from './announcements.controller';
-import { AnnouncementsService } from './announcements.service';
 import { Announcement } from './announcement.entity';
-import { UsersModule } from '../users/users.module';
-import { ClassesModule } from '../classes/classes.module';
-import { AuthModule } from '../auth/auth.module';
+import { AnnouncementsService } from './announcements.service';
+import { AnnouncementsController } from './announcements.controller';
+import { UsersModule } from '../users/users.module'; // Importa UsersModule si no lo has hecho
+import { ClassesModule } from '../classes/classes.module'; // Importa ClassesModule si no lo has hecho
+import { SendGridModule } from '../sendgrid/sendgrid.module'; // <--- AGREGADO
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Announcement]),
-    forwardRef(() => UsersModule),
-    forwardRef(() => ClassesModule),
-    AuthModule,
+    forwardRef(() => UsersModule), // Para evitar circular dependency si UsersService usa ClassesService
+    forwardRef(() => ClassesModule), // Para evitar circular dependency si ClassesService usa AnnouncementsService
+    SendGridModule, // <--- AGREGADO
   ],
-  controllers: [AnnouncementsController],
   providers: [AnnouncementsService],
-  exports: [AnnouncementsService],
+  controllers: [AnnouncementsController],
+  exports: [AnnouncementsService], // Exporta si AnnouncementsService es usado por otros módulos
 })
 export class AnnouncementsModule {}

@@ -9,6 +9,8 @@ import { SendGridModule } from './sendgrid/sendgrid.module';
 import { ChatModule } from './chat/chat.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { AssignmentsModule } from './assignments/assignments.module';
+import { ServeStaticModule } from '@nestjs/serve-static'; // Importar ServeStaticModule
+import { join } from 'path';
 
 import { User } from './users/user.entity';
 import { Announcement } from './announcements/announcement.entity';
@@ -45,12 +47,17 @@ import { AppService } from './app.service';
           Assignment,
           Submission, // Asegúrate de que Submission esté aquí
         ],
-        synchronize: false,
+        synchronize: false, // Controlado por migrations
         migrations: [__dirname + '/../migrations/**/*{.ts,.js}'],
         migrationsRun: process.env.NODE_ENV === 'production',
         logging: process.env.NODE_ENV !== 'production',
       }),
       inject: [ConfigService],
+    }),
+    // ServeStaticModule debe ser un import de módulo directo en el array imports principal, no dentro de TypeOrmModule.forRootAsync.
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'uploads'), // Ruta donde se encuentran los archivos subidos
+      serveRoot: '/uploads', // Prefijo de URL para acceder a los archivos (ej: http://localhost:3000/uploads/mi-archivo.pdf)
     }),
     UsersModule,
     AuthModule,

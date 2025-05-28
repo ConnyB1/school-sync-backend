@@ -11,15 +11,15 @@ export class CreateAssignmentDto {
   description?: string;
 
   @IsDateString({}, { message: 'La fecha de entrega debe ser una fecha válida.' })
-  @IsOptional() // Puede ser opcional si se permite que el profesor lo deje sin fecha inicial
+  @IsOptional()
   dueDate?: string;
 
   @IsUUID()
   @IsNotEmpty({ message: 'La tarea debe estar asociada a una clase.' })
   classId: string;
 
-  // FIXED: Añadida propiedad para la URL del archivo adjunto
+  // Propiedad para la URL del archivo adjunto
   @IsOptional()
   @IsString()
-  assignmentFileUrl?: string;
+  assignmentFileUrl?: string; // <-- Este es el nombre correcto
 }

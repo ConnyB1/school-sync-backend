@@ -17,7 +17,7 @@ import { ChatController } from './chat.controller';
         Message,
         User,
         Class,
-        ClassEnrollment // <--- AÑADE ClassEnrollment AQUÍ
+        ClassEnrollment 
     ]),
     AuthModule,
     UsersModule,

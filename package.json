@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build",
+    "build": "npx nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -19,13 +19,14 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "typeorm": "node ./node_modules/typeorm/cli.js --dataSource dist/data-source.js",
-    "migration:create": "npm run typeorm -- migration:create",
-    "migration:generate": "npm run typeorm -- migration:generate",
-    "migration:run": "npm run typeorm -- migration:run",
-    "migration:revert": "npm run typeorm -- migration:revert"
+    "typeorm:cli": "node ./node_modules/typeorm/cli.js --dataSource dist/data-source.js",
+    "migration:create": "npm run typeorm:cli -- migration:create", 
+    "migration:generate": "npm run typeorm:cli -- migration:generate",
+    "migration:run": "npm run typeorm:cli -- migration:run",
+    "migration:revert": "npm run typeorm:cli -- migration:revert"
   },
   "dependencies": {
+    "@nestjs/serve-static": "^5.0.3",
     "@apollo/server": "^4.12.1",
     "@auth0/auth0-react": "^2.3.0",
     "@nestjs/apollo": "^13.0.4",
@@ -41,6 +42,7 @@
     "@nestjs/typeorm": "^11.0.0",
     "@nestjs/websockets": "^11.1.1",
     "@sendgrid/mail": "^8.1.5",
+    "@types/multer": "^1.4.12",
     "apollo-server-express": "^3.13.0",
     "auth0": "^4.23.0",
     "bcryptjs": "^3.0.2",
@@ -49,6 +51,7 @@
     "graphql": "^16.10.0",
     "graphql-ws": "^6.0.5",
     "jwks-rsa": "^3.2.0",
+    "multer": "^1.4.5-lts.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.14.1",
@@ -56,12 +59,10 @@
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
     "swagger-ui-express": "^5.0.1",
-    "typeorm": "^0.3.24",
-    "xlsx": "^0.18.5",
-    "@types/multer": "^1.4.12",
-    "multer": "^1.4.5-lts.1",
+    "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "ts-node": "^10.9.2"
+    "typeorm": "^0.3.24",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -73,6 +74,7 @@
     "@swc/core": "^1.10.7",
     "@types/auth0": "^3.3.10",
     "@types/express": "^5.0.0",
+    "@types/express-serve-static-core": "^5.0.6",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.7",
     "@types/passport": "^1.0.17",

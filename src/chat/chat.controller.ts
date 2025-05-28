@@ -14,7 +14,6 @@ export class ChatController {
   @Get('rooms')
   async getUserChatRooms(@Req() req: AuthenticatedRequest): Promise<any[]> {
     this.logger.log(`Usuario ${req.user.email} solicitando su lista de salas de chat.`);
-    // Pasa el objeto user completo
     return this.chatService.getUserChatRooms(req.user); 
   }
   

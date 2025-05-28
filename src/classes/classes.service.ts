@@ -183,12 +183,13 @@ export class ClassesService {
     return classes.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async findById(classId: string, userId: string): Promise<Class> {
-    this.logger.log(`Buscando clase ID: ${classId} para usuario ID: ${userId}`);
+  // MODIFICADO: Agregado un parámetro opcional para cargar relaciones
+  async findById(classId: string, userId: string, relations: string[] = ['teacher', 'studentEnrollments', 'studentEnrollments.user']): Promise<Class> {
+    this.logger.log(`Buscando clase ID: ${classId} para usuario ID: ${userId} con relaciones: ${relations.join(', ')}`);
 
     const classEntity = await this.classesRepository.findOne({
       where: { id: classId },
-      relations: ['teacher', 'studentEnrollments', 'studentEnrollments.user'], // Cargar matrículas y los usuarios matriculados
+      relations: relations, // Usar las relaciones pasadas o las predeterminadas
     });
 
     if (!classEntity) {

@@ -6,12 +6,12 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
     ManyToOne,
-    OneToMany, // Importar OneToMany
+    OneToMany,
     JoinColumn,
   } from 'typeorm';
   import { Class } from '../classes/class.entity';
   import { User } from '../users/user.entity';
-  import { Submission } from './submission.entity'; // Importar la nueva entidad Submission
+  import { Submission } from './submission.entity';
   
   @Entity('assignments')
   export class Assignment {
@@ -25,7 +25,7 @@ import {
     description?: string;
   
     @Column({ type: 'timestamptz', nullable: true })
-    dueDate?: Date | null; // Changed to allow null explicitly
+    dueDate?: Date | null;
   
     @ManyToOne(() => Class, (cls) => cls.assignments, { onDelete: 'CASCADE', nullable: false })
     @JoinColumn({ name: 'class_id' })
@@ -41,11 +41,11 @@ import {
     @Column({ type: 'uuid', name: 'teacher_id', nullable: true })
     teacherId?: string;
 
-    // Optional: for file uploads (teacher's attachment to the assignment description)
+    // Propiedad para la URL del archivo adjunto
+    // Ahora permite 'string', 'undefined' o 'null'
     @Column({ name: 'assignment_file_url', type: 'text', nullable: true })
-    assignmentFileUrl?: string;
+    assignmentFileUrl?: string | null; // <-- CAMBIO CRUCIAL AQUÍ
 
-    // FIXED: Nueva relación OneToMany con Submission
     @OneToMany(() => Submission, (submission) => submission.assignment)
     submissions: Submission[];
   
@@ -54,4 +54,5 @@ import {
   
     @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
     updatedAt: Date;
+    static assignmentFileUrl: string;
   }
