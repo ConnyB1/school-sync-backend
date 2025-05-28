@@ -13,12 +13,12 @@ import { ClassEnrollment } from './class-enrollments/class-enrollment.entity';
 dotenv.config();
 
 export const AppDataSource = new DataSource({
-  type: process.env.DB_TYPE as any || 'postgres', // o 'mysql', 'sqlite', etc.
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  username: process.env.DB_USERNAME || 'postgres',
-  password: process.env.DB_PASSWORD || 'your_password',
-  database: process.env.DB_NAME || 'schools-db',
+  type: process.env.DB_TYPE as any || 'postgres',
+  host: process.env.DB_HOST, // Ya no hay valor por defecto como 'localhost'
+  port: parseInt(process.env.DB_PORT || '5432'), // Puedes mantener un default o quitarlo
+  username: process.env.DB_USERNAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
   synchronize: false, // ¡IMPORTANTE! False en producción, solo true para desarrollo inicial o test.
   logging: true, // Para ver las queries de TypeORM
   entities: [User, Class, Assignment, Submission, Announcement, Message, ClassEnrollment], // Asegúrate de que todas tus entidades estén aquí
