@@ -33,11 +33,15 @@ import { AppService } from './app.service';
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
         type: 'postgres',
-        host: configService.get<string>('DB_HOST', 'localhost'),
-        port: configService.get<number>('DB_PORT', 5432),
-        username: configService.get<string>('DB_USERNAME', 'postgres'),
-        password: configService.get<string>('DB_PASSWORD', '321'),
-        database: configService.get<string>('DB_NAME', 'schoolsyn-database'),
+        host: configService.get<string>('DB_HOST'), // Se tomará de tus variables de entorno
+        port: configService.get<number>('DB_PORT'),       // Se tomará de tus variables de entorno
+        username: configService.get<string>('DB_USERNAME'), // Se tomará de tus variables de entorno
+        password: configService.get<string>('DB_PASSWORD'), // Se tomará de tus variables de entorno
+        database: configService.get<string>('DB_NAME'),     // Se tomará de tus variables de entorno
+
+        ssl: true, // <--- ¡AÑADE ESTO AQUÍ! Es crucial para Supabase.
+                  // Alternativamente: ssl: { rejectUnauthorized: false } si tienes problemas de certificado, pero es menos seguro.
+
         entities: [
           User,
           Announcement,
@@ -45,19 +49,18 @@ import { AppService } from './app.service';
           ClassEnrollment,
           Message,
           Assignment,
-          Submission, // Asegúrate de que Submission esté aquí
+          Submission,
         ],
-        synchronize: false, // Controlado por migrations
+        synchronize: false, // Correcto para producción, las migraciones se encargan del esquema.
         migrations: [__dirname + '/../migrations/**/*{.ts,.js}'],
-        migrationsRun: process.env.NODE_ENV === 'production',
+        migrationsRun: process.env.NODE_ENV === 'production', // Tus migraciones se ejecutarán en producción.
         logging: process.env.NODE_ENV !== 'production',
       }),
       inject: [ConfigService],
     }),
-    // ServeStaticModule debe ser un import de módulo directo en el array imports principal, no dentro de TypeOrmModule.forRootAsync.
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'), // Ruta donde se encuentran los archivos subidos
-      serveRoot: '/uploads', // Prefijo de URL para acceder a los archivos (ej: http://localhost:3000/uploads/mi-archivo.pdf)
+      rootPath: join(__dirname, '..', 'uploads'), 
+      serveRoot: '/uploads', 
     }),
     UsersModule,
     AuthModule,
